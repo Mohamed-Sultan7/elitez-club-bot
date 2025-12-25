@@ -2,22 +2,19 @@ import { Telegraf, Markup } from "telegraf";
 import axios from "axios";
 
 // ========== ENV VARS ==========
-const BOT_TOKEN     = process.env.BOT_TOKEN;
-const GROUP_ID      = process.env.GROUP_ID;      // Community group/channel ID (numeric -100xxxx)
-const ADMIN_CHAT    = process.env.ADMIN_CHAT;    // Staff/admin chat id or @channel
-const SHEET_URL     = process.env.SHEET_URL;     // Google Apps Script Webhook
-const SUPPORT_USER  = process.env.SUPPORT_USER || "elitez_club7"; // without @
-const COMMUNITY_URL = process.env.COMMUNITY_URL || "https://t.me/elitezclub_community";
-const JOIN_URL      = process.env.JOIN_URL || "https://elitez.club/join";
+const BOT_TOKEN    = process.env.BOT_TOKEN;
+const GROUP_ID     = process.env.GROUP_ID;      // Community group ID (numeric, e.g. -100123...)
+const ADMIN_CHAT   = process.env.ADMIN_CHAT;    // Staff/admin channel/chat id
+const SHEET_URL    = process.env.SHEET_URL;     // Google Apps Script Webhook
+const SUPPORT_USER = process.env.SUPPORT_USER || "elitez_club7"; // without @
 // ===============================
-
 
 if (!BOT_TOKEN) throw new Error("BOT_TOKEN missing!");
 
 const bot = new Telegraf(BOT_TOKEN);
 
 // In-memory state (replace with DB later if needed)
-const userState = {}; 
+const userState = {};
 // possible states: new → waiting_join → waiting_email → done
 
 // ---------- Email validation ----------
@@ -33,23 +30,17 @@ function getState(ctx) {
 
 // ---------- Save lead to Google Sheets ----------
 async function saveLead({ user_id, username, full_name, email }) {
-  if (!SHEET_URL) return;
   try {
+    if (!SHEET_URL) return;
     await axios.post(SHEET_URL, {
       user_id,
       username,
       full_name,
-      email,
-      source: "elitez_club_bot"
+      email
     });
   } catch (err) {
-    console.error("❌ Google Sheet Error:", err?.message || err);
+    console.error("❌ Google Sheet Error:", err);
   }
-}
-
-function supportLink() {
-  const text = encodeURIComponent("Hi, I need help with Elitez Club free access.");
-  return `https://t.me/${SUPPORT_USER}?text=${text}`;
 }
 
 // ========== MAIN HANDLER ==========
@@ -69,10 +60,10 @@ async function handleMsg(ctx) {
     state.status = "waiting_join";
 
     await ctx.reply(
-      "Welcome to the Elitez Club Free Access Bot 🎁\n\n" +
+      "Welcome to the Free Access Bot for Elitez Club 🎁\n\n" +
       "Before we continue, you must join the Elitez Club community 👇",
       Markup.inlineKeyboard([
-        [Markup.button.url("👥 Join the Community", COMMUNITY_URL)],
+        [Markup.button.url("👥 Join the Community", "https://t.me/elitezclub_community")],
         [Markup.button.callback("✅ I Joined", "joined_community")]
       ])
     );
@@ -97,7 +88,7 @@ async function handleMsg(ctx) {
 
     if (!isEmail(text)) {
       await ctx.reply(
-        "That email doesn’t look valid.\nSend it like:\n`name@gmail.com`",
+        "That email is not valid.\nSend it like:\n`name@gmail.com`",
         { parse_mode: "Markdown" }
       );
       return;
@@ -120,17 +111,19 @@ async function handleMsg(ctx) {
         `🆕 New free access request\n\n` +
         `👤 ${fullName}\n` +
         `📛 ${username}\n` +
-        `📩 ${email}\n`
+        `📩 ${email}\n\n`
       );
     }
 
-    // Send buttons: join link + support
+    // Redirect user to support (EXACT same logic as old bot)
     await ctx.reply(
-      "Email received ✅\n\n" +
-      "Tap below to claim your free access:",
+      "Email received successfully! 🎉\n\n" +
+      "Tap the button below to contact support and activate your free access:",
       Markup.inlineKeyboard([
-        [Markup.button.url("🚪 Claim Free Access", JOIN_URL)],
-        [Markup.button.url("💬 Contact Support", supportLink())]
+        [Markup.button.url(
+          "💬 Contact Support Now",
+          `https://t.me/${SUPPORT_USER}?text=I+want+to+get+free+access`
+        )]
       ])
     );
 
@@ -141,19 +134,20 @@ async function handleMsg(ctx) {
   // ---------- ALREADY DONE ----------
   if (state.status === "done") {
     await ctx.reply(
-      "✅ Your free access request is already submitted.\n" +
-      "If you need help, tap Support below:",
+      "✔ Your free access request has already been submitted.\n" +
+      "If you have any questions, tap below to contact support:",
       Markup.inlineKeyboard([
-        [Markup.button.url("🚪 Claim Free Access", JOIN_URL)],
-        [Markup.button.url("💬 Contact Support", supportLink())]
+        [Markup.button.url(
+          "💬 Contact Support Now",
+          `https://t.me/${SUPPORT_USER}?text=I+want+to+get+free+access`
+        )]
       ])
     );
 
-    // Forward extra message to admin (optional)
-    if (ADMIN_CHAT && ctx.message?.text) {
+    if (ADMIN_CHAT && ctx.message.text) {
       await ctx.telegram.sendMessage(
         ADMIN_CHAT,
-        `📩 Message from a completed user:\n\n` +
+        `📩 New message from a user who completed the flow:\n\n` +
         `👤 ${fullName}\n` +
         `📛 ${username}\n` +
         `🆔 ${id}\n\n` +
@@ -167,10 +161,10 @@ async function handleMsg(ctx) {
   // ---------- STILL WAITING FOR COMMUNITY JOIN ----------
   if (state.status === "waiting_join") {
     await ctx.reply(
-      "Before we continue, you must join the community 👇\n" +
-      "Then tap: ✅ I Joined",
+      "Before we continue… you must join the community 👇\n" +
+      "Then press: **I Joined**",
       Markup.inlineKeyboard([
-        [Markup.button.url("👥 Join the Community", COMMUNITY_URL)],
+        [Markup.button.url("👥 Join the Community", "https://t.me/elitezclub_community")],
         [Markup.button.callback("✅ I Joined", "joined_community")]
       ])
     );
@@ -183,44 +177,39 @@ bot.action("joined_community", async (ctx) => {
   const state = getState(ctx);
 
   try {
-    // If GROUP_ID missing, skip verification (keeps flow working)
-    if (!GROUP_ID) {
-      state.status = "waiting_email";
-      await ctx.answerCbQuery("✅ Continue");
-      await ctx.reply("Great. Now send the email you want to use for free access:");
-      return;
-    }
-
     const member = await ctx.telegram.getChatMember(GROUP_ID, id);
 
     if (["member", "administrator", "creator"].includes(member.status)) {
       state.status = "waiting_email";
 
-      await ctx.answerCbQuery("✅ Verified");
+      await ctx.answerCbQuery("✔ Verified");
       await ctx.reply(
-        "Verified ✅\n\n" +
-        "Now send the email you want to use for free access:"
+        "Perfect! ✨\n" +
+        "Now send the email you want to use to activate your free access:"
       );
+
     } else {
       await ctx.answerCbQuery("❌ Not joined yet");
-      await ctx.reply("Join the community first, then tap ✅ I Joined again.");
+      await ctx.reply("Join the community first using the button above, then tap: **I Joined**");
     }
+
   } catch (err) {
     console.error("Join check error:", err);
     await ctx.answerCbQuery("⚠️ Error");
-    await ctx.reply("Verification failed. Please try again.");
+    await ctx.reply("Verification error… please try again.");
   }
 });
 
 // ===== SIMPLE COMMAND HANDLERS =====
+// /help
 bot.command("help", async (ctx) => {
   await ctx.reply(
     "Hi 👋\n\n" +
-    "This is the official Elitez Club Free Access bot.\n\n" +
-    "You can:\n" +
+    "This is the official free access bot for Elitez Club.\n" +
+    "With this bot you can:\n" +
     "• Join the community\n" +
-    "• Submit your email to activate free access\n" +
-    "• Contact support\n\n" +
+    "• Submit your email for free access\n" +
+    "• Contact the support team\n\n" +
     "Tap below to start:",
     Markup.inlineKeyboard([
       [Markup.button.callback("🚀 Start Free Access", "start_flow")]
@@ -228,12 +217,13 @@ bot.command("help", async (ctx) => {
   );
 });
 
+// /info
 bot.command("info", async (ctx) => {
   await ctx.reply(
     "ℹ️ About Elitez Club:\n\n" +
-    "• Courses & systems\n" +
-    "• Community & weekly drops\n" +
-    "• Mindset. Money. Mastery.\n\n" +
+    "• Courses + systems\n" +
+    "• Community support\n" +
+    "• Continuous updates\n\n" +
     "Tap below to start:",
     Markup.inlineKeyboard([
       [Markup.button.callback("🚀 Start Free Access", "start_flow")]
@@ -241,17 +231,19 @@ bot.command("info", async (ctx) => {
   );
 });
 
+// /trial
 bot.command("trial", async (ctx) => {
   const state = getState(ctx);
 
   if (state.status === "done") {
     await ctx.reply(
-      "✅ Your request is already submitted.\n" +
-      "If you need help, message here or tap Support after /start."
+      "✅ Your free access request was already submitted.\n" +
+      "If you need anything else, send your message here."
     );
     return;
   }
 
+  // New or mid-flow → start / resume funnel
   state.status = "new";
   await handleMsg(ctx);
 });
@@ -260,19 +252,23 @@ bot.command("trial", async (ctx) => {
 bot.action("start_flow", async (ctx) => {
   const state = getState(ctx);
 
+  // User already did the whole flow → don't restart
   if (state.status === "done") {
     await ctx.answerCbQuery("✅ Already submitted");
     await ctx.reply(
-      "✅ Your free access request is already submitted.\n" +
-      "Use the buttons below:",
+      "✔ Your free access request has already been submitted.\n" +
+      "If you have questions, tap below to contact support:",
       Markup.inlineKeyboard([
-        [Markup.button.url("🚪 Claim Free Access", JOIN_URL)],
-        [Markup.button.url("💬 Contact Support", supportLink())]
+        [Markup.button.url(
+          "💬 Contact Support Now",
+          `https://t.me/${SUPPORT_USER}?text=I+want+to+get+free+access`
+        )]
       ])
     );
     return;
   }
 
+  // New or mid-flow user → start / resume normally
   state.status = "new";
   await ctx.answerCbQuery();
   await handleMsg(ctx);
