@@ -4,9 +4,9 @@ import { Telegraf, Markup } from "telegraf";
 const BOT_TOKEN      = process.env.BOT_TOKEN;
 const ADMIN_CHAT     = process.env.ADMIN_CHAT; // staff/admin chat id or @channel
 const GROUP_ID       = process.env.GROUP_ID;   // numeric chat id for your community (e.g. -1001234567890)
-const COMMUNITY_URL  = process.env.COMMUNITY_URL || "https://t.me/elitez_club_community";
+const COMMUNITY_URL  = process.env.COMMUNITY_URL || "https://t.me/elitezclub_community";
 const JOIN_URL       = process.env.JOIN_URL || "https://elitez.club/join";
-const SUPPORT_USER   = process.env.SUPPORT_USER || "elitez_club"; // without @
+const SUPPORT_USER   = process.env.SUPPORT_USER || "elitez_club7"; // without @
 // ===============================
 
 if (!BOT_TOKEN) throw new Error("BOT_TOKEN missing!");
